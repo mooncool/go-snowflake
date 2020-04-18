@@ -22,9 +22,12 @@ const (
 	mcepoch = int64(1288834974657) // Tweeter epoch
 )
 
+var nanosInMilli = time.Millisecond.Nanoseconds()
+
 // IDGenerator id generator interface
 type IDGenerator interface {
 	NextID() (int64, error)
+	ExplainID(id int64) string
 }
 
 // Config configuration
@@ -71,7 +74,7 @@ func (gen *generator) NextID() (int64, error) {
 	gen.mutex.Lock()
 	defer gen.mutex.Unlock()
 
-	timestamp := time.Now().UnixNano()
+	timestamp := time.Now().UnixNano() / nanosInMilli
 	delta := gen.lastTimestamp - timestamp
 	if delta > 0 {
 		return -1, fmt.Errorf("clock moved backwards, refusing to generate id for %d milliseconds", delta)
@@ -81,7 +84,7 @@ func (gen *generator) NextID() (int64, error) {
 		gen.sequence = (gen.sequence + 1) & sequenceMask
 		if gen.sequence == 0 {
 			time.Sleep(1 * time.Millisecond) // until next millisecond
-			timestamp = time.Now().UnixNano()
+			timestamp = time.Now().UnixNano() / nanosInMilli
 		}
 	} else {
 		gen.sequence = int64(0)
@@ -93,4 +96,14 @@ func (gen *generator) NextID() (int64, error) {
 		gen.datacenterID<<dataCenterIDLeftShift |
 		gen.workerID<<workerIDLeftShift |
 		gen.sequence, nil
+}
+
+func (gen *generator) ExplainID(id int64) string {
+	timestamp := (id>>timestampLeftShift)&0x1FFFFFFFFFF + mcepoch
+	dataCenterID := (id >> dataCenterIDLeftShift) & 0x1F
+	workerID := (id >> workerIDLeftShift) & 0x1F
+	sequence := id & 0xFFF
+
+	return fmt.Sprintf("timestamp: %d, data center id: %d, worker id: %d, sequence: %d",
+		timestamp, dataCenterID, workerID, sequence)
 }
