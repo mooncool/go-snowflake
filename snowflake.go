@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 const (
@@ -27,6 +29,7 @@ var nanosInMilli = time.Millisecond.Nanoseconds()
 // IDGenerator id generator interface
 type IDGenerator interface {
 	NextID() (int64, error)
+	NextIDs(size int) ([]int64, error)
 	ExplainID(id int64) string
 }
 
@@ -91,11 +94,31 @@ func (gen *generator) NextID() (int64, error) {
 	}
 
 	gen.lastTimestamp = timestamp
-
+	// fmt.Println(timestamp, gen.datacenterID, gen.workerID, gen.sequence)
 	return (timestamp-mcepoch)<<timestampLeftShift |
 		gen.datacenterID<<dataCenterIDLeftShift |
 		gen.workerID<<workerIDLeftShift |
 		gen.sequence, nil
+}
+
+func (gen *generator) NextIDs(size int) ([]int64, error) {
+	result := make([]int64, size)
+	var resultErr error
+
+	for i := 0; i < size; i++ {
+		id, err := gen.NextID()
+		if err != nil {
+			if resultErr == nil {
+				resultErr = err
+			} else {
+				resultErr = errors.Wrapf(resultErr, "%v", err)
+			}
+		} else {
+			result[i] = id
+		}
+	}
+
+	return result, resultErr
 }
 
 func (gen *generator) ExplainID(id int64) string {
